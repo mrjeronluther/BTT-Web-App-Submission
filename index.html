@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File Submission</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.21.1/axios.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+</head>
+
+<body>
+  <!-- Loading Screen -->
+  <div id="loading-page">
+    <img
+      src="https://github.com/mrjeronluther/Memo-Routing-Landing-Page/blob/main/WhatsApp%20Image%202025-06-05%20at%2015.44.42_3fc69535.jpg?raw=true"
+      alt="Loading..." id="BJ0QySqSJX" />
+  </div>
+
+  <!-- Main Content -->
+  <div id="main-content" style="display:none;">
+    <div class="text-center mb-4">
+      <img
+        src="https://github.com/mrjeronluther/Memo-Routing-Landing-Page/blob/main/WhatsApp%20Image%202025-06-05%20at%2015.44.42_3fc69535.jpg?raw=true"
+        alt="Header Image" class="img-fluid" style="max-width: 100%; width: 600px" />
+    </div>
+
+    <div id="app" class="container mt-5">
+      <h3 class="text-center">CHARGES TO BE BILLED TO TENANTS</h3>
+
+      <label>Email:</label>
+      <input type="email" id="email" v-model="email" class="form-control" required />
+
+      <label class="mt-3">Select Property:</label>
+      <select v-model="selectedSheet" class="form-control" required>
+        <option value="" disabled>Select a Property</option>
+        <option v-for="sheet in sheetNames" :key="sheet" :value="sheet">{{ sheet }}</option>
+      </select>
+
+      <label class="mt-3">Specific sector/ group of tenants:</label>
+      <textarea
+        v-model="note"
+        class="form-control"
+        required
+        @input="checkNoteLength"
+      ></textarea>
+
+      <label class="mt-3">Start Date:</label>
+      <input type="date" v-model="startDate" class="form-control" required />
+
+      <label class="mt-3">End Date:</label>
+      <input type="date" v-model="endDate" class="form-control" required />
+
+      <label class="mt-3">Kind of utility or fixed charges for services:</label>
+      <div v-for="option in options" :key="option">
+        <input type="checkbox" :id="option" :value="option" :checked="selectedOptions.includes(option)"
+          @change="toggleFields(option)" />
+        <label :for="option">{{ option }}</label>
+      </div>
+
+      <div v-for="option in selectedOptions" :key="option" class="mt-3">
+        <h5>{{ option }}</h5>
+        <label>Attach signed BTT:</label>
+        <input type="file" @change="handleFileUpload($event, option, 'file1')" class="form-control"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx" required :disabled="isUploading" />
+        <label>Attach editable file where the signed BTT was printed from:</label>
+        <input type="file" @change="handleFileUpload($event, option, 'file2')" class="form-control"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx" required :disabled="isUploading" />
+        <div v-if="option !== 'CUSA'">
+          <label>Attach latest billing of utility provider or service contractor:</label>
+          <input type="file" @change="handleFileUpload($event, option, 'file3')" class="form-control"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx" required :disabled="isUploading" />
+          <label>Date of the billing or SOA:</label>
+          <input type="date" v-model="formEntries[option].date" class="form-control" required />
+        </div>
+      </div>
+
+      <button class="btn btn-primary mt-3" @click="submitForm" :disabled="isUploading">
+        <span v-if="isUploading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        {{ isUploading ? 'Checking...' : 'Submit' }}
+      </button><br><br>
+
+      <footer>
+        <center>
+          <p id="footer-text" style="font-size: 12px; color: #888"></p>
+        </center>
+      </footer>
+
+      <div v-if="loading" class="loading-overlay">
+        <div class="spinner-border text-primary"></div>
+        <p>Submitting...</p>
+      </div>
+
+      <!-- Information Modal -->
+      <div class="modal-backdrop fade show" v-if="showInfoModal"></div>
+      <div class="modal" tabindex="-1" style="display: block;" v-if="showInfoModal">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div :class="`modal-header text-white bg-${modal.type}`">
+              <h5 class="modal-title">{{ modal.title }}</h5>
+              <button type="button" class="btn-close" @click="closeInfoModal"></button>
+            </div>
+            <div class="modal-body">
+              <p>{{ modal.message }}</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" @click="closeInfoModal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Confirmation Modal -->
+      <div class="modal-backdrop fade show" v-if="showConfirmModal"></div>
+      <div class="modal" tabindex="-1" style="display: block;" v-if="showConfirmModal">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Confirm Submission</h5>
+            </div>
+            <div class="modal-body">
+              <p>Do you want to receive a copy of your responses?</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" @click="handleConfirm(false)">No</button>
+              <button type="button" class="btn btn-primary" @click="handleConfirm(true)">Yes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <style>
+    .loading-overlay, .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1050; 
+    }
+    .modal {
+      z-index: 1055;
+    }
+
+    #BJ0QySqSJX {
+      width: 100px;
+      animation: blink 1.2s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    #loading-page {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: white;
+      z-index: 9999;
+    }
+
+    @media (max-width: 600px) {
+      #BJ0QySqSJX { width: 150px; }
+    }
+
+    @media (min-width: 601px) {
+      #BJ0QySqSJX { width: 300px; }
+    }
+  </style>
+
+  <script>
+    function startSession() {
+      google.script.run.withSuccessHandler((res) => {
+        console.log("Session started:", res);
+      }).startSession();
+    }
+
+    const { createApp, ref, reactive, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const email = ref("");
+        const selectedSheet = ref("");
+        const sheetNames = ref([]);
+        const note = ref("");
+        const startDate = ref("");
+        const endDate = ref("");
+        const options = ref([
+          "CUSA", "Electricity", "Water", "LPG", "PestCon",
+          "Bio-Augmentation", "Exhaust Cleaning", "Aircon Charges",
+          "Grease Trap", "Miscellaneous", "De-clogging", "Sewer Charges"
+        ]);
+        const selectedOptions = ref([]);
+        const formEntries = reactive({});
+        const loading = ref(false);
+        const isUploading = ref(false);
+        const showConfirmModal = ref(false);
+        const showInfoModal = ref(false);
+
+        const modal = reactive({
+          title: '',
+          message: '',
+          type: 'danger' 
+        });
+
+        const showModal = (title, message, type = 'danger') => {
+          modal.title = title;
+          modal.message = message;
+          modal.type = type;
+          showInfoModal.value = true;
+        };
+
+        const closeInfoModal = () => {
+          showInfoModal.value = false;
+        };
+
+        onMounted(() => {
+          startSession();
+          google.script.run.withSuccessHandler((data) => {
+            sheetNames.value = data;
+          }).getSheetNames();
+        });
+
+        const checkNoteLength = () => {
+          if (note.value.length > 50) {
+            note.value = note.value.substring(0, 50);
+            showModal("Character Limit", "Only 50 characters are allowed.", "warning");
+          }
+        };
+
+        const toggleFields = (option) => {
+          if (selectedOptions.value.includes(option)) {
+            selectedOptions.value = [];
+            delete formEntries[option];
+          } else {
+            selectedOptions.value = [option];
+            Object.keys(formEntries).forEach(key => delete formEntries[key]);
+            formEntries[option] = { file1: "", file2: "", file3: "", date: "" };
+          }
+        };
+
+        const handleFileUpload = (event, option, fileType) => {
+          const file = event.target.files[0];
+          if (!file) return;
+
+          const allowedExtensions = ["pdf", "doc", "docx", "xls", "xlsx", "csv", "ppt", "pptx"];
+          const fileExtension = file.name.split(".").pop().toLowerCase();
+
+          if (!allowedExtensions.includes(fileExtension)) {
+            showModal("Invalid File Type", "Please select a valid file (PDF, Word, Excel, CSV, PowerPoint).", "warning");
+            event.target.value = "";
+            return;
+          }
+
+          isUploading.value = true;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const fileData = reader.result.split(",")[1];
+            const formData = { fileName: file.name, fileData, mimeType: file.type };
+
+            google.script.run.withSuccessHandler((response) => {
+              if (response.success) {
+                formEntries[option][fileType] = response.url;
+              } else {
+                showModal("Upload Error", response.error, "danger");
+              }
+              isUploading.value = false;
+            }).uploadFile(formData);
+          };
+          reader.readAsDataURL(file);
+        };
+
+        const validateForm = () => {
+          const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+          if (!email.value || !emailRegex.test(email.value)) {
+            showModal("Validation Error", "Please enter a valid email address.");
+            return false;
+          }
+
+
+          if (!selectedSheet.value) {
+              showModal("Validation Error", "Please select a property.");
+              return false;
+          }
+          if (!note.value) {
+              showModal("Validation Error", "Please describe the specific sector or group of tenants.");
+              return false;
+          }
+          if (!startDate.value) {
+              showModal("Validation Error", "Please select a start date.");
+              return false;
+          }
+          if (!endDate.value) {
+              showModal("Validation Error", "Please select an end date.");
+              return false;
+          }
+          if (selectedOptions.value.length === 0) {
+              showModal("Validation Error", "Please select a kind of utility or charge.");
+              return false;
+          }
+
+          for (let option of selectedOptions.value) {
+            const entry = formEntries[option];
+            if (!entry) {
+              showModal("Validation Error", `Data for ${option} is not initialized. Please try selecting the charge again.`);
+              return false;
+            }
+
+            if (!entry.file1) {
+              showModal("Validation Error", `Please attach the signed BTT for ${option}.`);
+              return false;
+            }
+            if (!entry.file2) {
+              showModal("Validation Error", `Please attach the editable file for ${option}.`);
+              return false;
+            }
+
+            if (option !== "CUSA") {
+              if (!entry.file3) {
+                showModal("Validation Error", `Please attach the latest utility billing for ${option}.`);
+                return false;
+              }
+              if (!entry.date) {
+                showModal("Validation Error", `Please provide the date of the billing or SOA for ${option}.`);
+                return false;
+              }
+            }
+          }
+          return true;
+        };
+
+        const resetForm = () => {
+          email.value = "";
+          selectedSheet.value = "";
+          note.value = "";
+          startDate.value = "";
+          endDate.value = "";
+          selectedOptions.value = [];
+          Object.keys(formEntries).forEach(key => delete formEntries[key]);
+        };
+
+        const submitForm = () => {
+          if (!validateForm()) return;
+          showConfirmModal.value = true;
+        };
+        
+        const handleConfirm = (wantsCopy) => {
+          showConfirmModal.value = false;
+          loading.value = true;
+
+          const filteredEntries = Object.entries(formEntries)
+            .filter(([key]) => selectedOptions.value.includes(key))
+            .map(([checkboxLabel, files]) => ({ checkboxLabel, ...files }));
+
+          google.script.run.withSuccessHandler((response) => {
+            loading.value = false;
+            if (response.success) {
+              showModal("Success", "Data submitted successfully!", "success");
+              if (response.message) {
+                 setTimeout(() => { showModal("Info", response.message, "info"); }, 300);
+              }
+              resetForm();
+            } else {
+              showModal("Submission Error", response.error, "danger");
+            }
+          }).submitData({
+            email: email.value,
+            selectedSheet: selectedSheet.value,
+            note: note.value,
+            startDate: startDate.value,
+            endDate: endDate.value,
+            entries: filteredEntries,
+            sendCopy: wantsCopy
+          });
+        };
+
+        return {
+          email,
+          selectedSheet,
+          sheetNames,
+          note,
+          startDate,
+          endDate,
+          options,
+          selectedOptions,
+          formEntries,
+          loading,
+          isUploading,
+          modal,
+          showConfirmModal,
+          showInfoModal,
+          checkNoteLength,
+          toggleFields,
+          handleFileUpload,
+          submitForm,
+          validateForm,
+          handleConfirm,
+          closeInfoModal
+        };
+      }
+    }).mount("#app");
+
+    window.onload = () => {
+      document.getElementById("footer-text").innerHTML =
+        `© ${new Date().getFullYear()} Megaworld Lifestyle Malls. All rights reserved.`;
+
+      setTimeout(() => {
+        document.getElementById("loading-page").style.display = "none";
+        document.getElementById("main-content").style.display = "block";
+      }, 3000);
+    };
+  </script>
+</body>
+</html>
